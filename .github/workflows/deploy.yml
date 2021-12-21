@@ -6,6 +6,21 @@ on:
         description: 'Deploy Type (TEST/BETA/OFFICIAL)'
         required: true
         default: 'TEST'
+      Vendor:
+        description: 'Enter Device OEM Name'
+        required: true
+      CodeName:
+        description: 'Enter Device Code Name'
+        required: true
+      Branch:
+        description: 'Enter bootable/recovery Branch'
+        required: true
+      Link:
+        description: 'Enter Direct Download Link'
+        required: true
+      DtLink:
+        description: 'Enter Device Tree Link (From PBRP Org)'
+        required: true
       ChangeLogs:
         description: 'Build ChangeLogs'
         required: true
@@ -13,6 +28,11 @@ on:
 
 env:
   BUILD_RELEASE_TYPE: ${{ github.event.inputs.DEPLOY_TYPE }}
+  VENDOR: ${{ github.event.inputs.Vendor }}
+  CODENAME: ${{ github.event.inputs.CodeName }}
+  BRANCH: ${{ github.event.inputs.Branch }}
+  LINK: ${{ github.event.inputs.Link }}
+  DTLINK: ${{ github.event.inputs.DtLink }}
   CHANGELOG: ${{ github.event.inputs.ChangeLogs }}
   BOT_API: ${{ secrets.BOT_API }}
   GCF_AUTH_KEY: ${{ secrets.GCF_AUTH_KEY }}
@@ -21,8 +41,6 @@ env:
   GitHubName: ${{ secrets.GitHubName }}
   SFPassword: ${{ secrets.SFPassword }}
   SFUserName: ${{ secrets.SFUserName }}
-  TARGET: "pbrp"
-  #EXTRA_CMD: "Extra Commands Here"
 
 jobs:
   PBRP_CI:
@@ -30,38 +48,34 @@ jobs:
     runs-on: ubuntu-20.04
 
     steps:
-       - name: Auto Adapt Manifest
-         # /* if your branch name is other than the one which you dispatched workflow from then set it manually in the place of ${GITHUB_REF##*/}" */ 
-         run: echo "MANIFEST=https://github.com/PitchBlackRecoveryProject/manifest_pb -b ${GITHUB_REF##*/}" >> $GITHUB_ENV
-
        - name: Export Vars
          run: |
               if [[ ${BUILD_RELEASE_TYPE} == "TEST" ]]; then echo "TEST_BUILD=true"  >> $GITHUB_ENV;fi
               if [[ ${BUILD_RELEASE_TYPE} == "BETA" ]]; then echo "BETA_BUILD=true"  >> $GITHUB_ENV;fi
               if [[ ${BUILD_RELEASE_TYPE} == "OFFICIAL" ]]; then echo "PB_OFFICIAL=true"  >> $GITHUB_ENV;fi
+              echo "WorkPath=/home/runner/workspace" >> ${GITHUB_ENV}
+              echo "DLPATH=/home/runner/workspace/out/target/product/$CODENAME" >> ${GITHUB_ENV}
 
-       - name: Checkout Cleaning Up Runner Repo
-         uses: actions/checkout@v2
-         with:
-           repository: PitchBlackRecoveryProject/Cleaner
-           ref: main
-           token: ${{ secrets.GH_BOT_TOKEN }}
-           path: .github/actions/Cleaner
-       - name: Cleaning
-         uses: ./.github/actions/Cleaner
+       - name: Download Build
+         run: |
+              mkdir -p $WorkPath && cd $WorkPath
+              git clone https://github.com/PitchBlackRecoveryProject/android_bootable_recovery -b $BRANCH  --single-branch bootable/recovery
+              git clone https://github.com/PitchBlackRecoveryProject/DeployBuild DeployBuild
+              git clone https://github.com/PitchBlackRecoveryProject/vendor_utils vendor/utils
+              git clone $DTLINK device/$VENDOR/$CODENAME
+              mkdir -p $DLPATH && cd $DLPATH
+              wget $LINK
+              unzip -j *.zip *.img
 
-       - name: Checkout Recovery Compiler Repo
-         uses: actions/checkout@v2
-         with:
-           repository: PitchBlackRecoveryProject/Compiler
-           ref: production
-           token: ${{ secrets.GH_BOT_TOKEN }}
-           path: .github/actions/Compiler
-       - name: Recovery Compilation
-         uses: ./.github/actions/Compiler
-       
-       - name: Release Builds 
+       - name: Installing GHR
+         run: |
+              cd /home/runner
+              curl -s https://api.github.com/repos/tcnksm/ghr/releases/latest | jq -r '.assets[] | select(.browser_download_url | contains("linux_amd64")) | .browser_download_url' | wget -qi -
+              tar -xzf ghr_*_amd64.tar.gz --wildcards 'ghr*/ghr' --strip-components 1 && rm -rf ghr_*_amd64.tar.gz
+              chmod a+x ./ghr && sudo mv ./ghr /usr/local/bin/
+
+       - name: Release Build
          run: |
               sudo apt-get update && sudo apt-get install sshpass -y
-              cd $BuildPath 
-              bash vendor/utils/pb_deploy.sh ${BUILD_RELEASE_TYPE} ${VENDOR} ${CODENAME}
+              cd $WorkPath
+              bash DeployBuild/pb_deploy.sh ${BUILD_RELEASE_TYPE} ${VENDOR} ${CODENAME}
