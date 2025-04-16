@@ -92,11 +92,23 @@ function get_vendor () {
 	echo "$(echo ${1} | cut -d' ' -f1)"
 }
 # Common Props
-BUILD_IMG=$(find $(pwd)/out/target/product/${CODENAME}/recovery.img 2>/dev/null)
+BUILD_IMG=""
+for img in recovery.img boot.img vendor_boot.img; do
+    BUILD_IMG=$(find "$(pwd)/out/target/product/${CODENAME}" -type f -name "$img" 2>/dev/null | head -n 1)
+    [ -n "$BUILD_IMG" ] && break
+done
+
+if [ -z "$BUILDFILE" ]; then
+    BUILDFILE="$BUILD_IMG"
+    export TZ="Asia/Kolkata"
+    BUILD_DATE=$(date +%Y%m%d)
+    BUILD_DATETIME=$(date +%Y%m%d-%H%M)
+else
+    BUILD_DATE=$(echo "$BUILDFILE" | awk -F'[-]' '{print $4}')
+    BUILD_DATETIME="$(echo "$BUILDFILE" | awk -F'[-]' '{print $4}')-$(echo "$BUILDFILE" | awk -F'[-]' '{print $5}')"
+fi
 MD5=$(md5sum $BUILDFILE | awk '{print $1}')
 FILE_SIZE=$( du -h $BUILDFILE | awk '{print $1}' )
-BUILD_DATE=$(echo "$BUILDFILE" | awk -F'[-]' '{print $4}')
-BUILD_DATETIME="$(echo "$BUILDFILE" | awk -F'[-]' '{print $4}')-$(echo "$BUILDFILE" | awk -F'[-]' '{print $5}')"
 TARGET_DEVICE=$(cat /tmp/pb_devices.json | grep ${CODENAME} -A 3 | grep name | awk -F[\"] '{print $4}')
 BUILD_NAME=$(echo ${BUILDFILE} | awk -F['/'] '{print $NF}')
 DEVICES=$(cat /tmp/pb_devices.json | grep ${CODENAME} -A 3 | grep unified | awk -F[\"] '{ for (i=4; i<NF; i=i+2) print $i }')
@@ -263,11 +275,7 @@ function tg_beta_deploy() {
 function tg_test_deploy() {
 	echo -e "${green}Deploying to Telegram Device Maintainers Chat!\n${nocol}"
 
-    if [ -z ${BUILDFILE} ]; then
-        TEST_LINK="https://github.com/${GH_USER}/${GH_REPO}/releases/download/${RELEASE_TAG}/recovery.img"
-    else
-        TEST_LINK="https://github.com/${GH_USER}/${GH_REPO}/releases/download/${RELEASE_TAG}/$(echo $BUILDFILE | awk -F'[/]' '{print $NF}')"
-    fi
+    TEST_LINK="https://github.com/${GH_USER}/${GH_REPO}/releases/download/${RELEASE_TAG}/$(echo $BUILDFILE | awk -F'[/]' '{print $NF}')"
 
     MAINTAINER_MSG="PitchBlack Recovery for \`${VENDOR}\` \`${CODENAME}\` is available Only For Testing Purpose\n\n"
     if [[ ! -z $MAINTAINER ]]; then MAINTAINER_MSG=${MAINTAINER_MSG}"Maintainer: ${MAINTAINER}\n\n"; fi
@@ -303,8 +311,8 @@ else
 	zipcounter=$(find $(pwd)/out/target/product/$CODENAME/PBRP*-UNOFFICIAL.zip 2>/dev/null | wc -l)
 fi
 
-	recoveryimgcheck=$(find $(pwd)/out/target/product/$CODENAME/recovery.img 2>/dev/null | wc -l)
-
+	recoveryimgcheck=$(find "$(pwd)/out/target/product/$CODENAME" -type f -name "recovery.img" -o -name "boot.img" -o -name "vendor_boot.img" 2>/dev/null | wc -l)
+ 
 if [[ "$recoveryimgcheck" > "0" ]]; then
 	if [[ "$zipcounter" > "1" ]]; then
 		printf "${red}More than one zips dected! Remove old build...\n${nocol}"

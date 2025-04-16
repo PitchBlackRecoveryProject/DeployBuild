@@ -45,7 +45,7 @@ env:
 jobs:
   PBRP_CI:
     if: "(! contains(toJSON(github.event.commits.*.message), '[skip-ci]'))"
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     steps:
        - name: Export Vars
@@ -65,7 +65,17 @@ jobs:
               git clone $DTLINK device/$VENDOR/$CODENAME
               mkdir -p $DLPATH && cd $DLPATH
               wget $LINK
-              unzip -j *.zip *.img
+
+       - name: Unzip ZIP if exists
+         run: |
+              cd $DLPATH
+              ZIPFILE=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
+              if [[ -n "$ZIPFILE" ]]; then
+                echo "Found ZIP: $ZIPFILE"
+                unzip -j "$ZIPFILE"
+              else
+                echo "No ZIP file found. Skipping unzip."
+              fi
 
        - name: Installing GHR
          run: |
