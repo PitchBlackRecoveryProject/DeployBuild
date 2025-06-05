@@ -216,11 +216,11 @@ function sf_deploy() {
 }
 
 # Function to create Samsung Odin TAR from images
+# Function to create Samsung Odin TAR from images
 function create_samsung_tar() {
     local OUT_DIR="$(pwd)/out/target/product/${CODENAME}"
     local TAR_NAME="PBRP-${CODENAME}-${VERSION}-${BUILD_DATETIME}-${DEPLOY_TYPE}-ODIN.tar"
     local TAR_PATH="${OUT_DIR}/${TAR_NAME}"
-    local TAR_MD5_PATH="${TAR_PATH}.md5"
     
     echo -e "${cyan}Creating Samsung Odin TAR package...${nocol}"
     
@@ -242,7 +242,7 @@ function create_samsung_tar() {
         # Change to output directory to avoid full paths in TAR
         pushd "${OUT_DIR}" > /dev/null
         
-        # Create TAR file with found images
+        # Create TAR file with found images using ustar format (Samsung Odin requirement)
         echo -e "${cyan}Creating TAR: ${TAR_NAME}${nocol}"
         if ! tar -H ustar -cvf "${TAR_NAME}" "${SAMSUNG_IMAGES[@]}"; then
             echo -e "${red}Failed to create Samsung Odin TAR${nocol}"
@@ -250,16 +250,23 @@ function create_samsung_tar() {
             return 1
         fi
         
-        # Create MD5 checksum
-        if ! md5sum "${TAR_NAME}" | awk '{print $1}' > "${TAR_MD5_PATH}"; then
-            echo -e "${red}Failed to create MD5 checksum${nocol}"
+        # Create MD5 checksum and append to TAR file (Samsung Odin format)
+        echo -e "${cyan}Adding MD5 checksum to TAR...${nocol}"
+        if ! md5sum -t "${TAR_NAME}" >> "${TAR_NAME}"; then
+            echo -e "${red}Failed to append MD5 checksum to TAR${nocol}"
             popd > /dev/null
             return 1
         fi
         
-        echo -e "${green}Samsung Odin TAR created successfully: ${TAR_PATH}${nocol}"
-        echo -e "${green}TAR size: $(du -h "${TAR_NAME}" | awk '{print $1}')${nocol}"
-        echo -e "${green}MD5 checksum: $(cat "${TAR_MD5_PATH}")${nocol}"
+        # Rename TAR file to .tar.md5 (Samsung Odin format)
+        if ! mv "${TAR_NAME}" "${TAR_NAME}.md5"; then
+            echo -e "${red}Failed to rename TAR to .md5 format${nocol}"
+            popd > /dev/null
+            return 1
+        fi
+        
+        echo -e "${green}Samsung Odin TAR created successfully: ${TAR_PATH}.md5${nocol}"
+        echo -e "${green}TAR size: $(du -h "${TAR_NAME}.md5" | awk '{print $1}')${nocol}"
         
         # Return to original directory
         popd > /dev/null
@@ -282,42 +289,37 @@ function gh_deploy() {
 	fi
 	cp $BUILD_IMG $UPLOAD_PATH
 
-	# Samsung TAR handling
-	if [[ "${VENDOR,,}" == "samsung" ]]; then
+	# Samsung TAR MD5 handling
+	if [[ "${VENDOR}" == "samsung" ]]; then
     	# Find any existing TAR files (case insensitive, newest first)
-    	BUILD_FILE_TAR=$(find $(pwd)/out/target/product/${CODENAME} -maxdepth 1 -type f -iname "*.tar" -printf "%T@ %p\n" 2>/dev/null | 
+    	BUILD_FILE_TAR=$(find $(pwd)/out/target/product/${CODENAME} -maxdepth 1 -type f -iname "*.tar.md5" -printf "%T@ %p\n" 2>/dev/null | 
                     	sort -nr | cut -d' ' -f2- | head -n 1)
     	
     	if [[ -z "${BUILD_FILE_TAR}" ]]; then
-        	echo -e "${yellow}No existing TAR file found for Samsung device, creating one...${nocol}"
+        	echo -e "${yellow}No existing TAR MD5 file found for Samsung device, creating one...${nocol}"
         	if create_samsung_tar; then
-            	# Get the newly created TAR file
-            	BUILD_FILE_TAR=$(find $(pwd)/out/target/product/${CODENAME} -maxdepth 1 -type f -iname "*.tar" 2>/dev/null | head -n 1)
+            	# Get the newly created TAR MD5 file
+            	BUILD_FILE_TAR=$(find $(pwd)/out/target/product/${CODENAME} -maxdepth 1 -type f -iname "*.tar.md5" 2>/dev/null | head -n 1)
             	if [[ -n "${BUILD_FILE_TAR}" ]]; then
-                	echo -e "${green}Successfully created Samsung Odin TAR: ${BUILD_FILE_TAR}${nocol}"
+                	echo -e "${green}Successfully created Samsung Odin TAR MD5: ${BUILD_FILE_TAR}${nocol}"
             	else
-                	echo -e "${red}Failed to locate newly created TAR file${nocol}"
+                	echo -e "${red}Failed to locate newly created TAR MD5 file${nocol}"
                 	exit 1
             	fi
         	else
-            	echo -e "${red}Failed to create Samsung Odin TAR${nocol}"
+            	echo -e "${red}Failed to create Samsung Odin TAR MD5${nocol}"
             	exit 1
         	fi
     	else
-        	echo -e "${green}Using existing Samsung Odin TAR: ${BUILD_FILE_TAR}${nocol}"
+        	echo -e "${green}Using existing Samsung Odin TAR MD5: ${BUILD_FILE_TAR}${nocol}"
     	fi
     	
-    	# Copy TAR and MD5 to upload directory
+    	# Copy TAR MD5 to upload directory
     	if ! cp -v "${BUILD_FILE_TAR}" "${UPLOAD_PATH}/"; then
-        	echo -e "${red}Failed to copy TAR file to upload directory${nocol}"
+        	echo -e "${red}Failed to copy TAR MD5 file to upload directory${nocol}"
         	exit 1
     	fi
-    	
-    	# Copy MD5 if it exists
-    	if [[ -f "${BUILD_FILE_TAR}.md5" ]]; then
-        	if ! cp -v "${BUILD_FILE_TAR}.md5" "${UPLOAD_PATH}/"; then
-            	echo -e "${yellow}Warning: Failed to copy MD5 file${nocol}"
-        	fi
+
     	fi
 	fi
 
