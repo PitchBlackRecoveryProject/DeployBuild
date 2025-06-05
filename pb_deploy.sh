@@ -216,7 +216,6 @@ function sf_deploy() {
 }
 
 # Function to create Samsung Odin TAR from images
-# Function to create Samsung Odin TAR from images
 function create_samsung_tar() {
     local OUT_DIR="$(pwd)/out/target/product/${CODENAME}"
     local TAR_NAME="PBRP-${CODENAME}-${VERSION}-${BUILD_DATETIME}-${DEPLOY_TYPE}-ODIN.tar"
@@ -321,7 +320,7 @@ function gh_deploy() {
     	fi
 
     	fi
-	fi
+
 
 	# Final Release
 	ghr -t ${GH_BOT_TOKEN} -u ${GH_USER} -r ${GH_REPO} -n "$(echo $DEPLOY_TYPE_NAME) Release for $(echo $CODENAME)" -b "PBRP $(echo $RELEASE_TAG)" -c ${GH_SHA} -delete ${RELEASE_TAG} ${UPLOAD_PATH}
